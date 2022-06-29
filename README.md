@@ -111,7 +111,7 @@ chrome下node调试环境配置要求：使用方法见https://github.com/node-i
 
 //通用后端功能：
 1. 路由 :koa-router
-2. body解析:koa-bodyparser
+2. body解析:koa-bodyparser 【例如把koa2上下文的formData数据解析到ctx.request.body中】
 3. http头相关安全防范：koa-helmet
 4. 缓存：koa-conditional-get加koa-etag
 5. 静态资源服务器【如果前后端分离，就可以不用，静态资源单独单间一个站点，启动独立静态资源服务器，而不是用koa-static在node端并行搞一个静态资源服务器】：koa-static
@@ -145,10 +145,12 @@ chrome下node调试环境配置要求：使用方法见https://github.com/node-i
 
 
 
-完整的流程如下：
-	首先初始化的时候require了route.js,执行了里面的router文件夹里面的index.js,因为route.js对所有的页面都执行了一边请求，所以每个页面都执行到了router里面的index.js文件里面的getController之前【有个yield】;下一次客户端请求，就会根据路由，继续执行里面对应的controller【每个页面的controller平时都处于监听状态，只要由请求发过来，就继续执行】，
-	最后再controller里面执行业务逻辑，执行render，这个render是router文件夹下index.js里面的render，
-	而这个render又用到了lib下的views.js
+服务器启动流程：
+		1.执行app.js,使用koa框架创建app
+		2.进入middleware的index.js,注册所有中间件：用app.use注册中间件
+		3.使用http或https的createServer方法，传入koa框架产生的那个app.callback():例如http.createServer(app.callback())
+
+
 
 
 
