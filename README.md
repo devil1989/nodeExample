@@ -4,6 +4,16 @@
 直接参考项目根目录下的Dockerfile。
 
 
+node启动命令：npm start
+node单次调试命令：npm run debug-node  【前提是chorme下的node调试环境已经配置好】
+node边开发边调试命令：npm run debugs  【前提是chorme下的node调试环境已经配置好】
+	调试流程：
+	1.执行上面的npm run debug-node或者npm run debugs
+	2.在chrome中大概地址  chrome://inspect/#devices
+	3.点击浏览器页面内部的Devices下的Remote Target下面的inspect，就自动进入node调试界面
+
+
+
 
 nodemom：用于后端系统重启，但如果后端系统崩溃了，那就需要另一个软件让nodemon自动重启，这个软件就是forever，这样才会有安全稳定可访问的线上环境，即使站点崩溃了，也可以马上重启
          nodemon.json文件中设置相关项，手动重启是rs；只要修改的node端的文件，nodemon都会自动刷新，然后用户刷新以下页面，就是最新的文件了。
