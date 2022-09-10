@@ -1,0 +1,15 @@
+{
+  "apps" : [{
+    "name"       : "demo_prod",
+    "script"     : "./app.js",
+    "env": {
+      "NODE_ENV": "prod",
+      "PORT": "10000"
+    },
+    "instances"  : 1,
+    "watch":true,
+  }]
+}
+
+
+

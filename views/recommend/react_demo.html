@@ -1,0 +1,29 @@
+{% extends "views/common/mc_layout.html" %}
+
+
+
+{% block title %}
+<title></title>
+<meta name="Keywords" content = "..."/>
+<meta name="Description" content = "..."/>
+{% endblock %}
+
+
+{% block head %}
+<link rel="stylesheet" href="{{bundle('/recommend/common/mc/bundle.css')}}">
+<link rel="stylesheet" href="{{bundle('/recommend/app/react_demo/bundle.css')}}">
+{% endblock %}
+
+
+{% block body %}
+<div id="root">
+    <div>jeffre555645879ychen</div>
+</div>
+    {{ outputWindowInfo | safe }}
+{% endblock %}
+
+
+{% block footer %}
+<script src="{{bundle('/recommend/common/mc/bundle.js')}}"></script>
+<script src="{{bundle('/recommend/app/react_demo/bundle.js')}}"></script>
+{% endblock %}

@@ -1,0 +1,97 @@
+//数据库数据导出
+如果是容器内导出，需要先进入容器：docker exec -it 6f5212068289 /bin/bash
+mongoexport -d 数据库名 -c 集合名 -o 导出的文件路径【例如e:\DingData.json】
+最后把导出的文件从容器中拷贝出来
+
+
+//数据数据如何导入
+然后使用cp命令将主机文件拷贝到docker容器中
+docker cp b.json 6f5212068289:/
+
+然后进入容器
+docker exec -it 6f5212068289 /bin/bash
+
+然后执行导入命令
+mongoimport -h 127.0.0.1 -d DB_NAME -c COLLECTION_NAME b.json -u=对应的那个数据库的帐号 -p=对应的那个数据库的密码
+
+
+
+
+
+//集群的安全：https://www.cnblogs.com/hahaha111122222/p/13965196.html
+1.集群之间用加密文件进行通讯
+2.外部进入数据库，通过帐号密码进行安全保证
+
+
+
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+创建副本集步骤：
+1.在yml文件所在目录的dbconfig文件夹下，执行openssl rand -base64 1024 > mongodb.key 创建加密文件:如果没安装openssl，执行sudo apt-get install openssl和sudo apt-get install libssl-dev【libssl-dev是openssl的常用库】
+2.chmod 600 mongodb.key修改文件为所拥有的用户才有读写权限
+3.docker-compose -f docker-compose.rel.yaml up -d  : 执行docker-compose up -d 来执行那个yml文件，里面已经配置好了数据库副本集的其他配置【执行自定义文件用  docker-compose -f docker-compose.rel.yaml up -d  】
+  注意，这里的dbconfig是自己在提前创建好的，里面有各个集群的conf配置文件，配置文件里面已经把各个集群的密码认证文件mongodb.key的路径配置好了，但配置文件的设置，需要在docker容器启动后，去容器里面设置
+  如果出错了一直restart，可以执行： docker logs -f 容器名称  来查看错误原因
+4.把集群密码认证文件mongodb.key和各个数据库集群的.conf文件拷贝进入各个副本集【每个副本都要拷贝】，它们都在dbconfig文件夹下，所以只要拷贝整个文件夹即可：
+    //拷贝key到数据库的容器内:可以先docker exec -it db-master ls查看下到底里面有没有 dbconfig文件
+    docker cp dbconfig db-master:/   【最后的：/表示把文件放到根目录】
+    docker cp dbconfig db-slave:/
+    docker cp dbconfig db-arbiter:/
+
+5.进入每一个db容器，设置它们的conf文件
+    docker exec -it db-master mongod --config ./dbconfig/master.conf
+    docker exec -it db-slave mongod --config ./dbconfig/slave.conf
+    docker exec -it db-arbiter mongod --config ./dbconfig/arbiter.conf
+
+4.执行docker exec -it db-master mongo admin ：进入mongo主数据库
+5.初始化集群：rs.initiate({_id:"mongoset",members:[{_id:0,host:"43.143.25.248:27017"},{_id:1,host:"43.143.25.248:27018"},{_id:2,host:"43.143.25.248:27019",arbiterOnly:true}]})
+    这里要特别注意，host的ip一定要添加在.conf文件里面的bindIp属性里面，否则数据库是不会陌生的ip允许访问的，
+    还有最重要的一点就是，虽然各个mongo的docker容器的27017默认端口被映射到了服务器的27017，27018，27019等端口，但是这个只是服务器内部的端口访问，这些端口对外网还是不开启的，这就造成了很严重的一点
+    就是如果服务器不开启27017，27018，27019等端口，那么rs.initiate()执行的时候，访问这些端口会被拒绝，集群初始化就会失败
+
+6.开启备机可读：rs.secondaryOk()；然后查看集群状态：rs.status()，数据库集群到这里基本就配置好了，接下来就是给数据库创建管理员
+//7.增加database这个服务，也就是db-master这个容器的数据库的优先级：
+    //config = rs.conf()
+    //config.members[0].priority=2
+    //rs.reconfig(config)
+    //rs.conf()  //这个表示查看新配置
+
+8.继续设置密码不需要这个auth验证；//执行db.auth("jeffreychen","out103496")，来鉴权，否则无法创建管理员，对应的帐号密码在yml文件中，进入那个数据库的容器，就用对应的那个数据库容器的帐号密码
+9.创建数据库管理员账号，主节点创建管理员，其他副本集数据库会自动同步：
+    db.createUser({
+            user: 'adsf',
+            pwd: 'fdsf',
+            roles: [{
+                role: 'clusterAdmin',//超级管理员权限，除了local和config仓库，对其他任何仓库都有查看的权限【没有修改其他仓库的权限】，当前的admin数据库有admin权限
+                db: 'admin'
+            },{
+                role: 'readAnyDatabase',
+                db: 'admin'
+            },{
+                role : 'readWrite',
+                db : 'config'
+            },{
+                role : 'readWrite',
+                db : 'local'
+            }]
+        })
+10.执行use gpclubs 切换到gpclubs仓库，，因为每个仓库的管理员，都需要先切换到该仓库，然后才能创建，在其他仓库设置另外一个数据库的管理员是无效的
+11.添加gpclubs数据库的管理员
+    db.createUser({
+        user: 'dddd',
+        pwd: 'dddd',
+        roles: [{
+            role: 'readWrite',
+            db: 'gpclubs'
+        }]
+    })
+
+9.全部完成以后退出，到了这里，集群和node都已经开启了，查看线上站点是否正常；然后关闭其中的某个数据库容器，比如关闭db-master容器，看然后再去线上查看数据是否正常；
+  并用rs.status()查看“从数据库：”是否变成“主数据库”【一个primary类型的数据库被关闭，另一个secondary类型的数据库变成primary类型】
+
+
+  //如果副本创建失败，如何清空重新来
+  1.docker-compose down先关闭容器
+  2.docker ps -a查看所有容器
+  3.docker stop 容器名称 ，停止那些以为在运行而删除失败的容器
+  4.docker rm 容器名称，以为之前一步已经停止了容器，这里就可以直接删除了
+  5.docker volume rm 数据卷，删除没有必要的数据卷，如果都不需要，可以直接执行docker volume prune来全部删除没有挂载容器的数据卷

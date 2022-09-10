@@ -1,0 +1,10 @@
+{
+  "apps" : [{
+    "name"       : "demo",
+    "script"     : "./app.js",
+    "env": {
+      "NODE_ENV": "yz"
+    },
+    "instances"  : 2
+  }]
+}

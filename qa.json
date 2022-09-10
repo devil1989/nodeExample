@@ -1,0 +1,11 @@
+{
+  "apps" : [{
+    "name"       : "demo_qa",
+    "script"     : "./app.js",
+    "env": {
+      "NODE_ENV": "qa",
+      "PORT": "10000"
+    },
+    "watch": true
+  }]
+}
