@@ -1,5 +1,5 @@
 #这个是 Node后端站点：前端站点有自己的仓库，前后端独立，每次发布都是把前端站点仓库的压缩代码拷贝到本仓库的static文件家内，然后和node站点一起发布,后续可以考虑单独搞一个单独的静态资源服务器，目前没必要
-
+										 docker-compose.yml文件没有上传，因为涉及密码，你们可以参照docker-compose.rel.yaml文件的结构，去创建docker-compose.yml文件来部署docker集群
 
 项目发布原理：
 	1.如果static项目的dll文件内的框架有变动，需要npm run dll-prod
