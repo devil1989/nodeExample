@@ -1,0 +1,33 @@
+{% extends "views/common/pc_layout.html" %}
+
+
+
+{% block title %}
+<title>个人中心</title>
+<meta name="Keywords" content = "前端，web前端，前端开发，javascript，node"/>
+<meta name="Description" content = "分享前端开发相关技术，也涉及后端开发，包含javascript，html，css，Ajax，react，vue，webpack，node，mongodb，docker等技术,为web前端开发工作者提供一个技术分享和交流的平台" />
+{% endblock %}
+
+
+{% block head %}
+<link rel="stylesheet" href="{{bundle('/recommend/common/pc/bundle.css')}}">
+<link rel="stylesheet" href="{{bundle('/recommend/app/personal/bundle.css')}}">
+{% endblock %}
+
+
+{% block body %}
+<div class="wrapper">
+    <div id="container" >
+    </div>
+</div>
+
+{{ outputWindowInfo | safe }}
+
+
+{% endblock %}
+
+
+{% block footer %}
+<script src="{{bundle('/recommend/common/pc/bundle.js')}}"></script>
+<script src="{{bundle('/recommend/app/personal/bundle.js')}}"></script>
+{% endblock %}

@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunk=self.webpackChunk||[]).push([["mock_index_js"],{44543:function(s,a){a.Z={"/v1/submit":{param:{},message:"O88K",status:0,data:!0},"/v1/pro_activity/search":{}}}}]);

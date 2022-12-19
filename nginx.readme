@@ -1,0 +1,57 @@
+菜鸟教程：https://www.runoob.com/linux/nginx-install-setup.html
+nginx使用场景和配置项：https://blog.csdn.net/zhanglongfei_test/article/details/119904075
+nginx功能：反向代理|正向代理 负载均衡 http服务器【静态页面】
+说明：普通的java项目，没有高并发的情况下，nginx配置比较简单，或者直接不用nginx做反向代理，直接用tomcat+jsp（安装jdk，这个直接就可以编译和执行java代码）
+
+关于nginx，apache，tomcat以及动态页面和静态页面：https://www.runoob.com/linux/nginx-install-setup.html
+    apache：本身只支持静态解析，但可以通过扩展脚本、模块等支持动态页面；常见的网站架构有：apache+php、apache+tomcat等。
+    nginx:占用内存少，并发能力强;静态页面处理能力较强，尤其是反向代理服务表现突出，常被用作负载均衡和代理服务器使用;常见的网站架构有：nginx+php、nginx+tomcat、nginx+apache+php等
+            nginx的epoll主要是对网络io进行操作，所以nginx适合高并发，静态资源
+    tomcat:开源的Java web应用服务器软件，常被称之为servlet容器;tomcat技术先进、性能稳定、而且免费，因而深受Java爱好者的喜爱并得到了广泛使用。tomcat静态页面处理能力较弱
+            Web 应用服务器。实际上Tomcat是Apache 服务器的扩展
+
+所以，一般java如果开发一个站点，方案是：【一般都做前后端分离，前端开发完以后，把静态资源和mapping.json传给服务端后台（不管是node，php，jsp，asp还是其他）】
+    1.后端用nginx+tomcat：nginx做反向代理和静态资源服务器，tomcat做动态资源服务器【jsp】
+
+
+关于缓存：
+    1.静态资源一直用缓存【缓存cache-cotrol为public】，通过文件名称的hash来区分版本
+    2.动态资源通过cache-control的private，public，no-store un-cache max-age来设置缓存
+
+
+正向代理：是客户端代理人，代表客户端和服务器去沟通，然后把结果返回给客户端，正向代理就是常用的ip代理，可以隐藏客户端学习，服务器只知道是哪个代理服务器访问在访问它；
+反向代理：是服务器代理人，代表服务器和客户端沟通，接受客户端请求后转发给服务器，服务器返回结果后给反向代理服务器，反向代理服务器再把结果返回给客户端；主要是用于服务器的安全隔离，内部环境不能让外部访问，用反向代理服务器可以解决这个问题。
+
+Servlet容器（Web容器）：独立的Servlet容器是Tomcat的默认模式
+                1.实现 Servlet 规范定义的各种接口和类，为 Servlet 的运行提供底层支持；
+                2.管理用户编写的 Servlet 类，以及实例化以后的对象；
+                3.提供 HTTP 服务，相当于一个简化的服务器。【也可以自己用nginx作为http服务器，大多用nginx作为http静态资源服务器和反向代理以及负载均衡】
+
+我们通常所说的 Web 服务器，比如 Apache、Nginx、IIS 等，它们的功能往往都比较单一，只能提供 http(s) 服务，让用户访问静态资源（HTML 文档、图片、CSS 文件、JavaScript 文件等），它们不能执行任何编程语言，也不能访问数据库，更不能让用户注册和登录。
+
+部署网站时都是将源代码直接扔到服务器上，然而源代码自己并不能运行，必须要有解释器的支持；当用户访问动态页面时，解释器负责分析、编译和执行源代码，然后得到处理结果
+解释器是执行脚本语言的核心部件，除此以外还有一些辅助性的部件，例如：
+垃圾回收器：负责及时释放不需要的内存，腾出资源供其它页面使用；
+标准库：任何编程语言都会附带标准库，它们提供了很多通用性的功能，极大地提高了开发效率，避免重复造轮子。
+我们习惯将以上各种支持脚本语言运行的部件统称为运行环境，或者运行时（Runtime）!!!!!!!!
+
+！！！！！！！！！！！！！！http://c.biancheng.net/servlet2/container.html这个写得非常好
+部署动态网站一般至少需要三个组件: Web 服务器【Apache、Nginx、IIS】、脚本语言运行时、数据库【 SQL Server,mySQL,mongodb,oracle 】
+脚本语言运行时：包含解释器，垃圾回收器，标准库（通用函数库）；
+                    在java中，对应的是JRE（包含了java虚拟机,java基础类库）+Servlet 容器；JRE只是运行环境和基础莱库，但是不符合Servlet标准，所以得通过Servlet容器来实现Servlet的接口，和JRE做对接
+                    一个动态页面对应一个 Servlet 类，开发一个动态页面就是编写一个 Servlet 类，当用户请求到达时，Servlet 容器会根据配置文件（web.xml）来决定调用哪个类
+                    Servlet 容器接收到请求以后，会根据配置文件（web.xml）找到对应的 Servlet 类，将它加载并实例化，然后调用其中的方法来处理用户请求；
+                    处理结束后，Servlet 容器将处理结果【静态资源】再转交给 Web 服务器， Web 服务器将处理结果【静态资源】进行封装，以 HTTP 响应的形式发送给最终的用户。
+
+常用的 Web 容器有 Tomcat、Jboss、Jetty、WebLogic 等，其中 Tomcat 由 Java 官方提供，是初学者最常使用的。
+
+
+
+nginx命令：
+    nginx：启动
+    nginx -s reload:重新载入配置文件
+    nginx -s reopen:重启
+    nginx -s stop:关闭
+
+
+nginx安装，window详见：https://www.jianshu.com/p/f9b41e785a36

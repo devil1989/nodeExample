@@ -1,0 +1,391 @@
+docker-compose自定义执行文件：docker-compose -f docker-compose.rel.yaml up -d
+
+
+
+docker前期准备：
+    //给某个ubuntu添加docker权限，否则每次都需要去root权限下执行docker-compose命令
+    sudo groupadd docker
+    sudo gpasswd -a ubuntu docker
+    sudo systemctl restart docker
+    还有就是再容器设置中要添加privileged:true [给docker容器添加root权限]，否则停止允许docker容器的命令容易出permission denied错误，导致无法停止
+
+特别特别要注意的点：docker volume prune是删除所有没有容器挂载的本地volume，如果当前网站的容器被删了，那么数据库的volume也就失去了挂载的容器，这个时候执行docker volume prune，等于是把数据库给删了
+                  所以docker volume prune最好不要执行，那些本地不要的volume，直接手动去删，以免误删
+
+
+单个数据库项目第一次启动执行流程（数据库集群启动流程在mongo.readme文件里面）：[每次执行命令要sudo，直接sudo su root进入root权限，然后就不用打sudo了，但最好还是看上面的docker前期准备，把当前账户添加到docker组]
+    1.管理员权限打开window PowerShell【window下】|linux下也是打开命令行界面,进入docker-compose.yml文件所在目录，执行sudo docker-compose up -d [注意，这里必须价sudo，因为有些文件的操作需要sudo权限]
+        这里会出现若干问题：
+            1.1由于web这个service用dockerfile创建，创建的时候会出现web error
+            1.2创建的时候因为端口被占用，会抛出error，需要进入sudo su root，然后netstat -anp |grep 端口号查看哪个进程占用端口，直接kill 进程号；然后再exitc出来，继续执行docker-compose up -d [遇到端口被占用就重复这一步]
+
+    2.执行docker exec -it gp-database mongo admin ：进入mongo数据库，接下来创建数据库管理员
+    3.执行db.auth("jeffreychen","out103496")，来鉴权，否则无法创建管理员
+
+    //创建超级管理员：clusterAdmin是超级管理员角色，readAnyDatabase是访问出了config和local数据库以外的所数据库的角色
+    4.  db.createUser({
+            user: 'fdsf',
+            pwd: 'fds',
+            roles: [{
+                role: 'clusterAdmin',
+                db: 'admin'
+            },{
+                role: 'readAnyDatabase',//除了local和config仓库，对其他任何仓库都有查看的权限【没有修改其他仓库的权限】
+                db: 'admin'
+            },{
+                role : 'readWrite',
+                db : 'config'
+            },{
+                role : 'readWrite',
+                db : 'local'
+            }]
+        })
+    5.执行use gpclubs 切换到gpclubs仓库，，因为每个仓库的管理员，都需要先切换到该仓库，然后才能创建
+
+    //创建gpclubs仓库的管理员，
+    6.执行 
+            //这个是yz环境的帐号密码
+            db.createUser({
+                user: 'gpyz',
+                pwd: '123456',
+                roles: [{
+                    role: 'readWrite',
+                    db: 'gpclubs'
+                }]
+            })
+
+            
+    7.这里有一点要特别注意，第六步中的帐号密码，要提前放到node项目的config文件的数据路连接上，
+        例如"mongodb://gp:Z103496out@database:27017/gpclubs?retryWrites=false" ：gp:Z103496out是帐号密码，database是yml里面的mongo的service名称
+        【因为处于同一个网络app-network，所以可以通过对应的yml里面的services的名称来代替ip访问，当然也可以在yml文件中通过设置静态ip，然后这个url就可以用静态ip：端口来访问了】
+
+
+
+
+
+！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+后面所有的发布【mongo-express和database服务基本不会修改，不需要重新构建镜像】：1.sudo docker-compose buld web ； 2.docker-compose up -d
+
+            docker-compose down :删除所有在允许的容器
+            docker-compose pull ：更新镜像内容  ：如果遇到通过dockerfile构建的镜像，需要自己docker-compose buld service名称来手动执行构建镜像【根据yml的对应service的名称下的内容来构建】
+            docker-compose up -d:根据镜像创建容器，第一次启动还会自动构建镜像，然后再根据镜像创建容器
+
+
+//docker中最烦人的2个问题！！！！！！！！！！！！！！！！！！！！！！！！！！！
+1.docker数据本地持久化，在yml中设置volume的名称和host地址非常麻烦，一点都不友好：
+    docker下的mongo会自动创建/data/db和/data/configdb这两个本地的挂载，同时默认的数据会放在/data/db里面
+
+docker inspect 容器名称，可以产看容器的所有数据
+source ： 宿主机内挂载文件位置【如果没有指定，就会自动生成本地的挂载目录】
+destination：容器内挂载位置【这个是exec进入容器后，查看容器里面对应路径下的位置，是容器里面的数据】
+
+2.docker-compose构建container以后，想要停止docker容器，非常麻烦，不管root权限还是其他，都没法停止！！！！！！！！！！！！：容器设置添加privileged:true [给docker容器添加root权限]
+
+
+
+
+！！！！！！！！
+容器出错如何查看报错 ： docker logs -f 容器名称
+！！！！！！！
+
+
+
+注意点：
+1.再容器内设置volume的时候，如果type为volume，那么soruce可以是全局的volumes，如果type为bind，那么volume必须是一个已经存在volume的地址，如下
+volumes:
+    - type: volume
+        source: db-data 本地数据卷名称，同步到这个数据卷内部
+        target: /data/db  容器中的位置
+        volume:
+        nocopy: true
+    - type: bind
+        source: /var/run/postgres/postgres.sock
+        target: /var/run/postgres/postgres.sock
+
+2.上面的source指向的是本机host挂载volume数据卷的地址，target是容器内的数据地址【exec进入容器，根目录下的的对应地址会用来保存数据】
+
+
+3.特别坑的一点，如果挂载的多个volume设置中，target没有设置/data/db和/data/configdb，那么docker的mongo镜像创建容器的时候，会自动挂载2个数据卷，映射的target分别是/data/db和/data/configdb
+
+
+4.目前来看，还无法自定义本地挂载的地址，只能设定对应的名称：默认是在/var/snap/docker/common/var-lib-docker/volumes/文件夹下，根据volume名称来确定位置
+                                    例如volume的名称是db-configdb，那么最终合成的文件夹名称会带有文件价名称的前缀，koa-node_db-configdb，里面_data文件夹存放数据
+                                    最终的地址是/var/snap/docker/common/var-lib-docker/volumes/koa-node_db-configdb/_data
+
+5.本地的挂载地址下增删改文件，在容器中的数据会自动同步，可以自动通过docker exec 容器名 ls 来查看对应的文件是否真的同步修改了
+
+6.yml设置里面的坑，已经全部在设置文件里面搞好了，所以不需要这里再写了
+
+
+docker-compose down:关闭并删除所有容器
+docker volume prune：删除所有没用到的volume数据卷，因为第一步已经删了容器，所以第二步执行的时候，会把所有的和容器没有关联的数据卷删除
+docker-compose up:创建和启动容器，因为上面已经把出了镜像的所有容器和volume删除了，所以是比较干净的环境了
+
+文件不是没有同步，是mongo这个容器中挂载了3个volume，2个是自动挂载的，自己挂载的那个volume，连容器数据source的地址里面都没有数据，不知道自己进入该容器，添加的数据去了哪里
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//docker命令行学习
+查看某个命令的所有子命令，例如 docker volume|container|image|network --help :查看数据卷，容器，镜像，网络的具体命令，如何查看某个命令的详细参数，例如docker volume ls --help【就是一步一步添加子命令】
+volume要删除，首先要删除对应的container，container要删除，首先要用“docker stop 容器名”来停止容器
+
+
+
+//关于volume
+目前volume的绑定有问题，没有绑定到正确的volume上
+volume上的数据卷的生命周期一直持续到没有容器使用它为止。
+volume数据卷的挂载模式：
+                    1.volume模式：如果volume是空【绑定的本地服务器地址内的数据为空】的而container中的目录有内容，那么docker会将container目录中的内容拷贝到volume中，但是如果volume中已经有内容，则会将container中的目录覆盖。
+                    2.bind模式：不管host目录是否有值，都要覆盖容器映射的目录【这个就保证了容器内永远都是服务器下的本地数据，用来做数据库本地化最合适不过】
+                    3.tmpfs模式：临时模式，容器停止允许，就会自动删除
+
+
+单独创建volume：sudo docker volume create --name 数据卷名称
+在服务器访问没问题后，就可以配置域名解析了：https://console.dnspod.cn/dns/cgclubs.com/record页面配置域名，把域名和ip绑定，顺便申请免费的ssl
+
+
+
+
+
+
+
+
+
+
+
+
+1.配置yml文件[可以直接用本地已经生成的image，也可以用build命令执行对应的dockerfile来生成镜像，建议用dockerfile]
+2.执行docker-compose up -d来创建对于的镜像和容器【镜像和容器都会创建】
+  第一次执行这个命令，如果yml里面的镜像使用dockerfile，会根据这个dockerfile自动打包image，再生成对应容器；但是第二次执行命令，不会再通过dockerfile重新构建镜像，只会修改yml里面设置的变量 
+  所以要修改镜像文件，得先删除原来的镜像，然后再重新执行docker-compose up -d
+
+
+完整的流程是：yml通过dockerfile和内部文件的设置构建一个完整的多容器组合应用，里面的每个容器都通过build命令执行dockerfile来构建image，每个image的dockerfile都不一样
+
+进入docker下的mongo容器下的admin数据库：docker exec -it gp-database mongo admin
+在里面创建自己的gpclubs数据库：use gpclub
+
+
+docker network inspect bridge查看当前名字bridge的网络下的设置：结构如下
+[
+    {
+        "Name": "bridge",//网络名称是bridge
+        "Id": "7e66d9ecf13d0acf2bea1dfc824e128c4d23f46a8a5e9f1c14a9fe05446ce3f9",
+        "Created": "2022-08-24T02:12:08.3434776Z",
+        "Scope": "local",
+        "Driver": "bridge",//网络类型是bridge
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.17.0.0/16",
+                    "Gateway": "172.17.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {},//表示连接到这个bridge的容器，空对象表示目前没有任何容器连接到这个bridge【网桥】
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "1500"
+        },
+        "Labels": {}
+    }
+]
+
+
+docker network ls：查看所有网络
+docker network rm 网络名称：删除某个网络
+docker network inspect 网络名称：查看某个网络内的具体信息，包括这个网络内有那些容器
+docker ps:查看所有容器列表【每个容器最左侧有容器id】
+docker inspect 容器id：查看对应容器的详细信息
+
+如果UI界面无法删除docker，可以用docker rm -f 容器id   来强制删除容器
+
+本地服务器和docker容器之间能否通信，可以用telnet命令来检测，类似于ping，但是telnet可以添加端口，ping不能添加端口
+telnet命令：telnet ip 端口 【ip和端口之间用空格，不是冒号】，连接成功后，用ctrl+c来退出连接【如果不行，就用ctr+]尝试退出】
+
+
+
+//删除容器
+docker kill 容器名称
+
+
+查看volume的挂载地址：sudo docker inspect id【这个id可以是任何docker容器，镜像，volume等等实体】
+
+docker rm －v 可以把镜像关联的volume也一并删除【如果volume挂载到指定主机目录的，那么它永远不会被删除】
+
+
+
+查看所有用户组：cat /etc/group
+
+//给某个账户添加docker权限
+sudo groupadd docker
+sudo gpasswd -a ubuntu docker
+sudo systemctl restart docker
+
+
+
+yml文件中的volume的参数命令格式：[[HOST-DIR:]CONTAINER-DIR[:OPTIONS]]]
+基础：volume挂载数据分bind【绑定模式】，volume【默认模式】，tmpfs【临时模式】;其中bind和volume都包含host地址和container地址，host地址是数据本地地址，container地址是数据的容器地址
+      因为容器本身会将自身的数据放在容器地址里面，容器移除了，对应的数据也会消失，所以需要一个本地化的host地址来保证数据的持久化，host地址的数据和容器内的数据时刻保持同步，容器内数据变动，host地址的数据也会同步
+关于数据的生命周期：
+                    host数据：一直存在，和容器内的数据同步；但是容器被删除的时候，容器的数据跟着消失，但host的数据依然存在
+                    容器内的数据：如果是bind或者volume模式，这个volume数据会随着容器的删除而的消失，如果一个volume对应多个容器，那么需要所有引用它的容器被删除，这个数据才会消失
+                                 如果是tmpfs模式，容器停止允许，这个数据就会被删除，不需要删除容器
+
+
+HOST-DIR：服务器存放数据的地址，是本地化的数据
+CONTAINER-DIR：容器存放数据的地址，所有容器都会有一个默认的存放数据得地址，这里就是指定容器存放数据的自定义地址
+OPTIONS：权限等自定义设置，例如rw是读写，ro 是只读
+如果指定HOST-DIR则必须是绝对路径，如果路径不存在则会自动创建
+
+
+
+
+
+
+
+//window下如何安装docker
+0.启动hyper-v:网上一大堆教程，hyper-v是win10系统下的虚拟机，但是对win10系统的版本有要求，家庭版的话比较麻烦，不过我还是搞定了，同时需要升级wsl2,我也通过教程搞定了
+   启动hyper前提是bios中要开启硬件的“虚拟”功能
+1.用管理员权限打开PowerShell
+2.进入DockerFile文件所在的目录，该目录下还得有一个.dockerigonre的文件【用DockerFile构建镜像的时候，需要忽略的文件都在.dockerigonre内设置】
+3.在DockerFile所在目录下执行 docker build -t gpclub:v1 .  其中gpclub:v1是自己的项目名称和版本号，其他都不变；最后构建成功后，在docker软件里，就可以看到自己构建的image镜像了【按照DockerFile+.dockerigonre构建的镜像】
+4.这里有一点要特别注意，docker容器默认是关闭所有的端口的，默认开启的端口在DockerFile里面的EXPOSE中设置，这个EXPOSE必须和node的端口保持一致，这样外面才可以通过这个端口来访问node服务器
+5.最最重要的一点是，外面访问docker容器，访问的默认网址是0.0.0.0，必须在node中把host设置成0.0.0.0【虽然docker也可以自定义网址，但没必要】
+6.通过上面5步，就可以通过0.0.0.0网址下的EXPOSE设置的端口来访问docker容器中的node，不过docker可以映射端口，就是把docker容器中的开放的端口【就是和node端口相同的那个端口】映射到本地服务器端口
+  这样就可以通过【localhost:本地端口】来访问node服务器了
+
+
+
+
+如何查看docker版本：PowerShell执行docker -v查看版本20.10.17
+注意：docker文件的镜像生成的时候，原来的文件夹是什么权限，那么一旦生成这个镜像，由镜像产生的容器内部的文件夹，和镜像录入的那个文件夹的权限，都是相同且一一对应的
+
+
+
+镜像相关命令:
+构建镜像：docker build -t runoob/centos:6.7 .   
+-t: 后面更镜像名称
+ runoob/centos:6.7是镜像名称，数字表示版本号，
+最后的.表示Dockerfile 文件所在目录，也可以指定Dockerfile 的绝对路径来代替.
+docker rmi:删除镜像
+
+
+容器相关命令：
+docker run：构建容器
+案例：docker run -it ubuntu /bin/bash
+-it是-i -t的简写，ubuntu是镜像名称【根据这个镜像来生成容器】，/bin/bash表示创建完容器以后，需要执行的命令，这里我们希望有个交互式 Shell，因此用的是 /bin/bash
+-t：终端
+-i：容器交互
+-d: 容器后台运行
+-P :是容器内部端口随机映射到主机的端口。
+-p: 是容器内部端口绑定到指定的主机端口。【小写是表示手动制定映射】：例如 docker run -d -p 4000:5000 training/webapp python app.py：意思是根据training/webapp镜像创建一个在后台运行的容器，端口映射是4000:5000，最后执行python app.py的内容
+--name:后面跟容器命名，如果没有--name,容器会自动命名
+--rm：容器退出时自动清理容器内部的文件系统
+-h HOSTNAME 或者 --hostname=HOSTNAME： 设定容器的主机名，它会被写到容器内的 /etc/hostname 和 /etc/hosts。
+-v 绑定volume，后面跟volume的需要挂载的绝对路径，
+我们可以在宿主机的 /etc/docker/daemon.json 文件中增加以下内容来设置全部容器的 DNS：配置完，需要重启 docker 才能生效。
+{
+  "dns" : [
+    "114.114.114.114",
+    "8.8.8.8"
+  ]
+}
+docker start | stop | restart | rm：分别表示启动，停止，重启，删除容器，后面跟容器id
+docker exec：进入容器【退出后，容器不会停止运行】
+docker export | import :导出容器和导入容器
+docker ps：查看容器详细详细
+在运行的容器内使用 apt-get update 命令进行更新。
+
+
+docker-compose命令：
+docker-compose down :删除所有在允许的容器
+docker-compose pull ：更新镜像内容  ：如果遇到通过dockerfile构建的镜像，需要自己docker-compose buld service名称来手动执行构建镜像【根据yml的对应service的名称下的内容来构建】
+docker-compose up -d:根据镜像创建容器，第一次启动还会自动构建镜像，然后再根据镜像创建容器
+
+
+
+
+docker 的网络相关命令
+docker network create:创建网络
+docker network create -d bridge test-net：创建一个名为test-net的网络，网络通信类型是bridge
+-d: 后面跟网络通信类型
+把创建docker容器和运行docker网络组合在一起
+docker run -itd --name test1 --network test-net ubuntu /bin/bash  ：意思是根据ubuntu镜像 ，创建一个“终端交互式且后台运行的（-itd的意思）”名称是test1的容器，该容器属于 test-net网络，最后执行/bin/bash 
+docker run -itd --name test2 --network test-net ubuntu /bin/bash ：类似，创建的是一个名为test2的容器，和test1属于同一个网络，所以可以相互通信【可以用ping来证明（首先得安装ping）】
+
+
+
+
+！！！！！！！！容器内数据操作！！！！！！！！！！！
+编辑容器内文件：
+    0.docker exec -it 容器id /bin/bash 进入容器编辑文件；然后按照下面三部，来执行容器内文件的修改
+    1.同步源索引：apt-get update
+    2.安装vim：apt-get install vim 
+    3.输入vim 文件名 即可编辑文件了
+
+容器内文件其他操作：比如查看之类的，就用 docker exec -it 容器名 ls
+                docker exec -it 容器名 +正常的命令行 【“docker exec -it 容器名” 相当于进入了这个容器的命令行，接下来原来该怎么打命令，就怎么打命令】
+
+看容器内文件是否是最新，只要设置一个特殊名称的文件即可，到时候通过docker exec -it 容器名 ls 来查看文件是否最新
+！！！！！！！！容器内数据操作！！！！！！！！！！！
+
+
+
+docker镜像管理：docker hub，类似于github的代码管理，可以把镜像放到原创服务器【一般不需要原创管理】
+
+DockerFile和.dockerignore：用户按照文件来创建镜像，不需要一个个敲命令
+VOLUME：定义匿名数据卷。在启动容器时忘记挂载数据卷，会自动挂载到匿名卷。【数据本地化】
+USER：用于指定执行后续命令的用户和用户组，这边只是切换后续命令执行的用户（用户和用户组必须提前已经存在）
+
+Docker Compose:定义和运行多容器 Docker 应用程序的工具，多容器的生成和通信，之间一键完成，一个webpapp只需要一个Docker Compose的yml就可以意见执行
+Docker Machine:管理多台机器上的docker，一般分布式服务器和数据库集群会用到，因为docker容器运行在不同的服务器主机上，我还用不上
+Docker Machine 管理的虚拟主机可以是机上的，也可以是云供应商，如阿里云，腾讯云，AWS，或 DigitalOcean。
+swarm：集群管理，和docker machine一起使用
+
+
+
+
+
+
+
+查看docker容器内部文件目录：docker exec 容器名称 ls
+查看docker容器内部某个文件的内部目录：docker exec 容器名称   ls 文件名|文件路径
+如果想查看某个文件的权限，只要在后面添加 -ld【查看文件夹权限】 查看文件权限【-l】
+
+
+
+
+
+
+//docker 容器无法关闭，删除的问题，提示permission denied
